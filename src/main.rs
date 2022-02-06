@@ -1,5 +1,7 @@
 use std::error::Error;
+use std::net::SocketAddr;
 use std::panic;
+use std::sync::Arc;
 use std::time::Duration;
 
 use btleplug::api::{ScanFilter};
@@ -7,6 +9,10 @@ use btleplug::api::{Central, Manager as _, Peripheral};
 use btleplug::platform::Manager;
 use bytes::{Buf, Bytes};
 use log::{debug, info, warn};
+use prometheus_hyper::{RegistryFn, Server};
+use tokio::sync::Notify;
+use prometheus::{Opts, Registry, Counter, TextEncoder, Encoder, IntCounter, GaugeVec, IntGaugeVec};
+use prometheus::core::Collector;
 use tokio::time;
 use uuid::Uuid;
 
@@ -16,40 +22,11 @@ extern crate pretty_env_logger;
 const SENSORVALUES_CHARACTERISTIC_UUID: Uuid = Uuid::from_u128(0xb42e2a68_ade7_11e4_89d3_123b93f75cba);
 const SENSORVALUES_SERVICE_UUID: Uuid = Uuid::from_u128(0xb42e1c08_ade7_11e4_89d3_123b93f75cba);
 
-#[derive(Debug)]
-pub struct SensorValues {
-    humidity: f32,
-    radon_short: u16,
-    radon_long: u16,
-    temp: f32,
-    atm: f32,
-    co2: u16,
-    voc: u16,
-}
-
-impl SensorValues {
-    pub fn from_vec(data: Vec<u8>) -> SensorValues {
-        let mut bytes = Bytes::from(data);
-
-        bytes.advance(1);
-        let humidity = (bytes.get_u8() as f32) / 2.0;
-        bytes.advance(2);
-        let radon_short = bytes.get_u16_le();
-        let radon_long = bytes.get_u16_le();
-        let temp = bytes.get_u16_le() as f32 / 100.0;
-        let atm = bytes.get_u16_le() as f32 / 50.0;
-        let co2 = bytes.get_u16_le();
-        let voc = bytes.get_u16_le();
-
-        return SensorValues{
-            humidity, radon_short, radon_long, temp, atm, co2, voc,
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     pretty_env_logger::init();
+
+    let metrics = createMetrics();
 
     let manager = Manager::new().await?;
     let adapter_list = manager.adapters().await?;
@@ -79,14 +56,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let peripherals = peripherals.unwrap();
 
             if peripherals.is_empty() {
-                warn!("No peripheral devices found, skipping");
+                debug!("No peripheral devices found, skipping");
             } else {
                 // All peripheral devices in range.
                 debug!("discovered {} peripherals", peripherals.len());
                 for peripheral in peripherals.iter() {
                     let properties = peripheral.properties().await;
                     if let Err(err) = properties {
-                        info!("Failed to read properties from peripheral, skipping: {:?}", err);
+                        debug!("Failed to read properties from peripheral, skipping: {:?}", err);
                         continue;
                     }
 
@@ -108,13 +85,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                         // Connect if we aren't already connected.
                         if let Err(err) = peripheral.connect().await {
-                            info!("Error connecting to peripheral, skipping: {:?}", err);
+                            debug!("Error connecting to peripheral, skipping: {:?}", err);
                             continue;
                         }
 
                         // discover services and characteristics
                         if let Err(err) = peripheral.discover_services().await {
-                            info!("Failed to discover services, skipping: {:?}", err);
+                            debug!("Failed to discover services, skipping: {:?}", err);
                             continue;
                         }
 
@@ -125,22 +102,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             .find(|c| c.uuid == SENSORVALUES_CHARACTERISTIC_UUID);
 
                         if let None = char {
-                            info!("Failed to find correct characteristic, skipping");
+                            debug!("Failed to find correct characteristic, skipping");
                             continue;
                         }
                         let char = char.unwrap();
 
                         let data = peripheral.read(char).await;
                         if let Err(err) = data {
-                            info!("Failed to read data from characteristic, skipping: {:?}", err);
+                            debug!("Failed to read data from characteristic, skipping: {:?}", err);
                             continue;
                         }
 
                         let values = SensorValues::from_vec(data.unwrap());
-                        debug!("serial {}, {:?}", serial, values);
+                        info!("serial {}, {:?}", serial, values);
+
+                        let label_values = &[&*serial.to_string()];
+                        metrics.gauge_humidity.with_label_values(label_values).set(values.humidity as f64);
+                        metrics.gauge_temp.with_label_values(label_values).set(values.temp as f64);
+                        metrics.gauge_atm.with_label_values(label_values).set(values.atm as f64);
+                        metrics.gauge_radon_short.with_label_values(label_values).set(values.radon_short as i64);
+                        metrics.gauge_radon_long.with_label_values(label_values).set(values.radon_long as i64);
+                        metrics.gauge_co2.with_label_values(label_values).set(values.co2 as i64);
+                        metrics.gauge_voc.with_label_values(label_values).set(values.voc as i64);
 
                         if let Err(err) = peripheral.disconnect().await {
-                            warn!("failed to disconnect from peripheral {:X}: {:?}", properties.address, err);
+                            debug!("failed to disconnect from peripheral {:X}: {:?}", properties.address, err);
                         }
                     }
                 }
@@ -149,4 +135,98 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn createMetrics() -> CustomMetrics {
+    let registry = Arc::new(Registry::new());
+    let shutdown = Arc::new(Notify::new());
+    let shutdown_clone = Arc::clone(&shutdown);
+    let (metrics, f) = CustomMetrics::new().expect("failed prometheus");
+    f(&registry).expect("problem registering");
+
+    // Startup Server
+    let jh = tokio::spawn(async move {
+        Server::run(
+            Arc::clone(&registry),
+            SocketAddr::from(([0; 4], 8080)),
+            shutdown_clone.notified(),
+        ).await
+    });
+    metrics
+}
+
+#[derive(Debug)]
+pub struct SensorValues {
+    pub humidity: f32,
+    pub temp: f32,
+    pub atm: f32,
+    pub radon_short: u16,
+    pub radon_long: u16,
+    pub co2: u16,
+    pub voc: u16,
+}
+
+pub struct CustomMetrics {
+    pub gauge_humidity: GaugeVec,
+    pub gauge_temp: GaugeVec,
+    pub gauge_atm: GaugeVec,
+    pub gauge_radon_short: IntGaugeVec,
+    pub gauge_radon_long: IntGaugeVec,
+    pub gauge_co2: IntGaugeVec,
+    pub gauge_voc: IntGaugeVec,
+}
+
+impl CustomMetrics {
+    pub fn new() -> Result<(Self, RegistryFn), Box<dyn Error>> {
+        let label_names = ["serial"];
+
+        let metrics = Self {
+            gauge_humidity: GaugeVec::new(Opts::new("humidity", "in rel%"), &label_names)?,
+            gauge_temp: GaugeVec::new(Opts::new("temperature", "air temperature, in C"), &label_names)?,
+            gauge_atm: GaugeVec::new(Opts::new("atm_pressure", "atmospheric pressure, in mbar"), &label_names)?,
+            gauge_radon_short: IntGaugeVec::new(Opts::new("radon_short", "in Bq/m3"), &label_names)?,
+            gauge_radon_long: IntGaugeVec::new(Opts::new("radon_long", "in Bq/m3"), &label_names)?,
+            gauge_voc: IntGaugeVec::new(Opts::new("voc", "in ppb"), &label_names)?,
+            gauge_co2: IntGaugeVec::new(Opts::new("co2", "in ppm"), &label_names)?,
+        };
+
+        let to_register: Vec<Box<dyn Collector>> = vec!(
+            Box::new(metrics.gauge_humidity.clone()),
+            Box::new(metrics.gauge_temp.clone()),
+            Box::new(metrics.gauge_atm.clone()),
+            Box::new(metrics.gauge_radon_short.clone()),
+            Box::new(metrics.gauge_radon_long.clone()),
+            Box::new(metrics.gauge_voc.clone()),
+            Box::new(metrics.gauge_co2.clone()),
+        );
+
+        let f = |r: &Registry| {
+            for m in to_register {
+                r.register(m);
+            }
+            Ok(())
+        };
+
+        Ok((metrics, Box::new(f)))
+    }
+}
+
+impl SensorValues {
+    pub fn from_vec(data: Vec<u8>) -> SensorValues {
+        let mut bytes = Bytes::from(data);
+
+        bytes.advance(1);
+        let humidity = (bytes.get_u8() as f32) / 2.0;
+        bytes.advance(2);
+        let radon_short = bytes.get_u16_le();
+        let radon_long = bytes.get_u16_le();
+        let temp = bytes.get_u16_le() as f32 / 100.0;
+        let atm = bytes.get_u16_le() as f32 / 50.0;
+        let co2 = bytes.get_u16_le();
+        let voc = bytes.get_u16_le();
+
+        return SensorValues{
+            humidity, radon_short, radon_long, temp, atm, co2, voc,
+        }
+    }
 }
