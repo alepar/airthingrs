@@ -1,0 +1,3 @@
+- room labels from config
+- dont query devices too often
+- remove stale values
