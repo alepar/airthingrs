@@ -1,0 +1,14 @@
+[package]
+name = "wavething-rust"
+version = "0.1.0"
+authors = ["Alexey Parfenov <alepar@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+btleplug = "~0"
+bytes = "~1"
+futures ="~0"
+log ="~0"
+pretty_env_logger = "~0"
+uuid = "~0"
+tokio = { version = "~1", features = ["macros", "rt-multi-thread"] }
