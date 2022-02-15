@@ -144,13 +144,13 @@ async fn query_peripherals(metrics: &CustomMetrics, adapter_list: &Vec<Adapter>,
                         ((md[1] as u32) << 8) +
                         (md[0] as u32);
 
+                debug!("querying peripheral {}", serial);
+
                 // Connect if we aren't already connected.
                 if let Err(err) = peripheral.connect().await {
-                    debug!("Error connecting to peripheral, skipping: {:?}", err);
+                    debug!("Error connecting to peripheral {}, skipping: {:?}", serial, err);
                     continue;
                 }
-
-                debug!("querying peripheral {}", serial);
 
                 let label_values = devices_labels.get(&*serial.to_string()).unwrap();
                 query_peripheral(metrics, peripheral, label_values).await;
