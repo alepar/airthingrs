@@ -19,14 +19,12 @@ use toml::Value;
 use toml::Value::Table;
 use uuid::Uuid;
 
-extern crate pretty_env_logger;
-
 const SENSORVALUES_CHARACTERISTIC_UUID: Uuid = Uuid::from_u128(0xb42e2a68_ade7_11e4_89d3_123b93f75cba);
 const SENSORVALUES_SERVICE_UUID: Uuid = Uuid::from_u128(0xb42e1c08_ade7_11e4_89d3_123b93f75cba);
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    pretty_env_logger::init();
+    init_logger()?;
 
     let (devices, label_names) = load_device_labels();
 
@@ -38,6 +36,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
         time::sleep(Duration::from_secs(5)).await;
         query_peripherals(&metrics, &adapter_list, &devices).await;
     }
+}
+
+fn init_logger() -> Result<(), log::SetLoggerError>{
+    return fern::Dispatch::new()
+        // Perform allocation-free log formatting
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        // Add blanket level filter -
+        .level(log::LevelFilter::Info)
+        // - and per-module overrides
+        .level_for("wavething_rust", log::LevelFilter::Debug)
+        // Output to stdout, files, and other Dispatch configurations
+        .chain(std::io::stdout())
+        // Apply globally
+        .apply();
 }
 
 fn load_device_labels() -> (HashMap<String, Vec<String>>, Vec<String>) {
@@ -129,6 +149,8 @@ async fn query_peripherals(metrics: &CustomMetrics, adapter_list: &Vec<Adapter>,
                     debug!("Error connecting to peripheral, skipping: {:?}", err);
                     continue;
                 }
+
+                debug!("querying peripheral {}", serial);
 
                 let label_values = devices_labels.get(&*serial.to_string()).unwrap();
                 query_peripheral(metrics, peripheral, label_values).await;
