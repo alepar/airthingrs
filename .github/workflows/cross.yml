@@ -56,5 +56,6 @@ jobs:
         # TODO: if any of the build step fails, the release should be deleted.
         with:
           files: 'wavething-rust*'
+          tag_name: "${{github.ref_name}}-${{ github.sha }}"
         env:
           GITHUB_TOKEN: ${{ secrets.CR_PAT }}
