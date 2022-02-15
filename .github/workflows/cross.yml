@@ -1,6 +1,6 @@
 # Instruction + template repo: https://github.com/FedericoPonzi/rust-ci
 # https://gist.github.com/Tehnix/5209b8fefd368bfdb67ca8761d3b8009
-name: bin
+name: cross
 
 on:
   workflow_dispatch:
