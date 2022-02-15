@@ -11,33 +11,6 @@ on:
       - 'v*.*.*'
 
 jobs:
-
-  test:
-    name: Test
-    needs: [style]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v1
-
-      - name: Install rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-
-      - name: Build debug
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-
-      - name: Test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-
   deploy:
     name: deploy
     needs: [test]
