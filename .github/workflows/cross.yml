@@ -1,4 +1,6 @@
-name: 'Build and publish docker images (all platforms)'
+# Instruction + template repo: https://github.com/FedericoPonzi/rust-ci
+# https://gist.github.com/Tehnix/5209b8fefd368bfdb67ca8761d3b8009
+name: cross
 
 on:
   workflow_dispatch:
@@ -9,8 +11,43 @@ on:
       - 'v*.*.*'
 
 jobs:
-  release:
+  deploy:
+    name: deploy
+    needs: [test]
+    #    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [ aarch64-unknown-linux-gnu, x86_64-unknown-linux-gnu ]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          target: ${{ matrix.target }}
+
+      - name: Build target
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --release --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          #strip target/${{ matrix.target }}/release/wavething-rust
+          cd target/${{ matrix.target }}/release          
+          tar czvf ../../../wavething-rust-${{ matrix.target }}.tar.gz wavething-rust
+          cd -
+      - name: Publish
+        uses: softprops/action-gh-release@v1
+        # TODO: if any of the build step fails, the release should be deleted.
+        with:
+          files: 'wavething-rust*'
+        env:
+          GITHUB_TOKEN: ${{ secrets.CR_PAT }}
