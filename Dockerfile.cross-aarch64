@@ -4,4 +4,5 @@ RUN dpkg --add-architecture arm64 && \
     apt-get update && \
     apt-get install --assume-yes \
         pkg-config \
-        libdbus-1-dev:arm64
+        libdbus-1-dev:arm64 \
+        libdbus-1-dev
