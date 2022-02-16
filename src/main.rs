@@ -147,17 +147,27 @@ async fn query_peripherals(metrics: &CustomMetrics, adapter_list: &Vec<Adapter>,
                 debug!("querying peripheral {}", serial);
 
                 // Connect if we aren't already connected.
-                if let Err(err) = peripheral.connect().await {
-                    debug!("Error connecting to peripheral {}, skipping: {:?}", serial, err);
+                for retry in 0..3 {
+                    if peripheral.is_connected().await.ok() == Some(true) {
+                        break;
+                    }
+                    debug!("Attempting a connect to peripheral {}", serial);
+                    if let Err(err) = peripheral.connect().await {
+                        debug!("Error connecting to peripheral {}, retrying: {:?}", serial, err);
+                        continue;
+                    }
+                }
+
+                // If still disconnected, skip
+                if peripheral.is_connected().await.ok() == Some(false) {
+                    warn!("Error connecting to peripheral {}, skipping: {:?}", serial, err);
                     continue;
                 }
 
                 let label_values = devices_labels.get(&*serial.to_string()).unwrap();
                 query_peripheral(metrics, peripheral, label_values).await;
 
-                if let Err(err) = peripheral.disconnect().await {
-                    debug!("failed to disconnect from peripheral {:X}: {:?}", properties.address, err);
-                }
+                // don't ever disconnect, it's a noop atm anyway
             }
         }
     }
