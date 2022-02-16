@@ -160,7 +160,7 @@ async fn query_peripherals(metrics: &CustomMetrics, adapter_list: &Vec<Adapter>,
 
                 // If still disconnected, skip
                 if peripheral.is_connected().await.ok() == Some(false) {
-                    warn!("Error connecting to peripheral {}, skipping: {:?}", serial, err);
+                    warn!("Error connecting to peripheral {}, skipping", serial);
                     continue;
                 }
 
