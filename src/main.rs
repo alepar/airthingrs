@@ -1,24 +1,13 @@
-use std::{fs, panic};
-use std::collections::{HashMap, HashSet};
-use std::error::Error;
-use std::net::SocketAddr;
+use std::panic;
+use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
-use btleplug::api::{BDAddr, ScanFilter};
-use btleplug::api::{Central, Manager as _, Peripheral};
+use btleplug::api::{Central, Manager as _, Peripheral, ScanFilter};
 use btleplug::platform::{Adapter, Manager};
-use bytes::{Buf, Bytes};
 use log::{debug, info, trace, warn};
-use prometheus::{GaugeVec, IntGaugeVec, Opts, Registry};
-use prometheus::core::Collector;
-use prometheus_hyper::{RegistryFn, Server};
-use tokio::sync::Notify;
 use tokio::time;
-use toml::Value;
-use toml::Value::Table;
 use uuid::Uuid;
 
 use metrics::CustomMetrics;
