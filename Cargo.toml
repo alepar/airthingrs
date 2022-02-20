@@ -1,5 +1,5 @@
 [package]
-name = "wavething-rust"
+name = "airthing"
 version = "0.1.0"
 authors = ["Alexey Parfenov <alepar@gmail.com>"]
 edition = "2018"

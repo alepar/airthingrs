@@ -20,6 +20,6 @@ RUN apt install -y \
     dbus
 
 RUN mkdir -p /app/bin
-COPY --from=builder /app/src/target/release/wavething-rust /app/bin/wavething-rust
+COPY --from=builder /app/src/target/release/airthing /app/bin/airthing
 COPY --from=builder /app/src/devices.toml /app/bin/devices.toml
 WORKDIR /app/bin

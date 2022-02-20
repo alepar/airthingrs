@@ -13,7 +13,7 @@ pub fn init_logger() -> anyhow::Result<(), log::SetLoggerError>{
         // Add blanket level filter -
         .level(log::LevelFilter::Info)
         // - and per-module overrides
-        .level_for("wavething_rust", log::LevelFilter::Info)
+        .level_for("airthing", log::LevelFilter::Info)
         // Output to stdout, files, and other Dispatch configurations
         .chain(std::io::stdout())
         // Apply globally

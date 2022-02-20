@@ -47,15 +47,15 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          #strip target/${{ matrix.target }}/release/wavething-rust
+          #strip target/${{ matrix.target }}/release/airthing
           cd target/${{ matrix.target }}/release          
-          tar czvf ../../../wavething-rust-${{ matrix.target }}.tar.gz wavething-rust
+          tar czvf ../../../airthing-${{ matrix.target }}.tar.gz airthing
           cd -
       - name: Publish
         uses: softprops/action-gh-release@v1
         # TODO: if any of the build step fails, the release should be deleted.
         with:
-          files: 'wavething-rust*'
+          files: 'airthing*'
           tag_name: "${{github.ref_name}}-${{ github.sha }}"
         env:
           GITHUB_TOKEN: ${{ secrets.CR_PAT }}
