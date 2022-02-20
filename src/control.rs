@@ -62,7 +62,7 @@ impl PeripheralControl<SensorValues> for PeripheralQueryControl {
     }
 
     fn remove_metric_if_stale(&self, now: Instant) {
-        if now.duration_since(self.last_values_time) > self.update_interval {
+        if now.duration_since(self.last_values_time) > self.update_interval*2 {
             let label_values: Vec<&str> = as_slice(&self.label_values);
             warn!("peripheral {:?} has stale values, removing from metrics", label_values);
             self.metrics.gauge_humidity.remove_label_values(&label_values);
