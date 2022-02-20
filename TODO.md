@@ -1,3 +1,1 @@
-- dont query devices too often
-- remove stale values
-- minimize query times by "learning" the update time
+- try subscribing instead of polling
